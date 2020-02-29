@@ -1,6 +1,10 @@
 kind: pipeline
 name: default
 
+platform:
+  os: linux
+  arch: arm
+
 workspace:
   base: /go
   path: filestash
@@ -9,7 +13,6 @@ clone:
   depth: 1
 
 steps:
-
 - name: build_prepare
   image: alpine:latest
   depends_on: [ clone ]
@@ -23,7 +26,7 @@ steps:
   image: node:12-alpine
   depends_on: [ build_prepare ]
   commands:
-  - apk add make git > /dev/null
+  - apk add make git python2 build-base > /dev/null
   - npm install --silent
   - make build_frontend
   - cp -R ./dist/data/public ./filestash/data/public
@@ -42,129 +45,20 @@ steps:
   - cp dist/filestash filestash/
   - chmod -R o+r+w+x ./dist/data
 
-- name: test_prepare
-  image: alpine:latest
-  depends_on: [ clone ]
-  environment:
-    PASSWORD:
-      from_secret: GIT_PASSWORD
-  commands:
-  - apk add git > /dev/null
-  - git clone "https://readonly:$PASSWORD@git.kerjean.me/filestash/test.git"
-  - chmod -R 777 ./test/
-
-- name: test_frontend
-  image: node:8-alpine
-  depends_on: [ test_prepare, build_frontend ]
-  commands:
-  - cd ./test/unit_js
-  - npm install --silent
-  - npm test
-
-- name: test_backend
-  image: golang:1.12-alpine
-  depends_on: [ test_prepare, build_backend, build_frontend ]
-  environment:
-    GO111MODULE: "on"
-  commands:
-  - apk add git gcc libc-dev poppler-utils > /dev/null
-  - cp ./test/assets/* /tmp/
-  - go test -mod=vendor -v --tags "fts5" ./test/unit_go/...
-
-- name: test_e2e
-  image: machines/puppeteer
-  depends_on: [ test_prepare, build_backend, build_frontend ]
-  environment:
-    ADMIN_PASSWORD: $$2a$$10$$9OFbPZV4lYpYjU5eUi91o.kgeMyCuW11j878YBRri3gBwccq2lSFy
-    APP_URL: http://127.0.0.1:8334
-    CI: true
-  commands:
-  - ./dist/filestash > /dev/null &
-  - cd ./test/e2e
-  - npm install > /dev/null
-  - node servers/webdav.js > /dev/null &
-  - npm test
-
 - name: release_prepare
   image: debian:stable-slim
-  depends_on: [ test_frontend, test_backend, test_e2e ]
-  environment:
-    GPG_PRIVATE:
-      from_secret: GPG_PRIVATE
-    GPG_PASSPHRASE:
-      from_secret: GPG_PASSPHRASE
+  depends_on: [ build_frontend, build_backend ]
   commands:
-  - apt-get update > /dev/null && apt-get install -y gnupg1 curl > /dev/null
   - chmod -R o-r-w-x- ./filestash
-  - tar -cf filestash_Linux-x86_64.tar ./filestash
-  - curl -s "https://downloads.filestash.app/gpg?private=$GPG_PASSPHRASE" > /tmp/private.key
-  - echo $GPG_PASSPHRASE | gpg1 --import /tmp/private.key
-  - echo $GPG_PASSPHRASE | gpg1 --sign --passphrase-fd 0 --default-key mickael@kerjean.me --no-tty filestash_Linux-x86_64.tar
+  - tar -cf filestash_Linux-armhf.tar ./filestash
 
-- name: release_publish
-  image: appleboy/drone-scp
+- name: publish
+  image: plugins/github-release
   depends_on: [ release_prepare ]
   when:
-    branch: master
+    event:
+      - tag
   settings:
-    command_timeout: 30m
-    host: hal.kerjean.me
-    user:
-      from_secret: SSH_USERNAME
-    password:
-      from_secret: SSH_PASSWORD
-    source: filestash_Linux-x86_64.tar.gpg
-    target: /app/pages/data/projects/filestash/downloads/latest/
-
-- name: release_docker
-  image: plugins/docker
-  depends_on: [ release_publish ]
-  when:
-    branch: master
-  settings:
-    dockerfile: ./docker/Dockerfile
-    repo: machines/filestash
-    username:
-      from_secret: DOCKER_USERNAME
-    password:
-      from_secret: DOCKER_PASSWORD
-    tags:
-    - latest
-    - "${DRONE_COMMIT_SHA:0:7}"
-
-- name: release_deploy
-  image: appleboy/drone-ssh
-  depends_on: [ release_docker ]
-  when:
-    branch: master
-  settings:
-    command_timeout: 10m
-    host: hal.kerjean.me
-    user:
-      from_secret: SSH_USERNAME
-    password:
-      from_secret: SSH_PASSWORD
-    port: 22
-    script:
-    - cd /app/filestash/
-    - docker-compose pull
-    - docker-compose up -d --force-recreate --build
-    - docker image prune -f
-
-- name: release_report
-  image: plugins/irc
-  depends_on: [ release_deploy ]
-  when:
-    branch: master
-  settings:
-    prefix: build
-    nick: blipblip
-    channel: filestash
-    host: chat.freenode.net
-    port: 6667
-    template: >
-      {{#success build.status}}
-        Build success: https://github.com/mickael-kerjean/filestash/commit/{{build.commit}}
-      {{else}}
-        Build failure: er}} https://github.com/mickael-kerjean/filestash/commit/{{build.commit}}
-      {{/success}}
+    api_key:
+      from_secret: github_token
+    files: "*.tar"
