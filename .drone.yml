@@ -3,7 +3,7 @@ name: default
 
 platform:
   os: linux
-  arch: arm
+  arch: arm64
 
 workspace:
   base: /go
@@ -50,7 +50,7 @@ steps:
   depends_on: [ build_frontend, build_backend ]
   commands:
   - chmod -R o-r-w-x- ./filestash
-  - tar -cf filestash_Linux-armhf.tar ./filestash
+  - tar -cf filestash_Linux-arm64.tar ./filestash
 
 - name: publish
   image: plugins/github-release

@@ -8,7 +8,7 @@
 # ./create_libresize.sh
 set -e
 arch=$(dpkg --print-architecture)
-if [ $arch != "amd64" ] && [ $arch != "armhf" ]; then
+if [ $arch != "amd64" ] && [ $arch != "armhf" ] && [ $arch != "arm64" ]; then
     echo "PLATFORM NOT SUPPORTED"
     exit 1
 fi
@@ -46,6 +46,8 @@ libpath=$(
         echo "x86_64-linux-gnu";
     elif [ $arch = "armhf" ]; then
         echo "arm-linux-gnueabihf"
+    elif [ $arch = "arm64" ]; then
+        echo "aarch64-linux-gnu"
     fi
 )
 #ar x /tmp/libresize.a
@@ -83,7 +85,7 @@ ar x /usr/lib/$libpath/libtiff.a
 ar x /usr/lib/$libpath/libpangoft2-1.0.a
 ar x /usr/lib/$libpath/libpoppler.a
 
-ar rcs libresize.a *.o
+ar rcs libresize_`uname -s`-`uname -m`.a *.o
 rm *.o *.ao
 
 #scp libresize.a mickael@hal.kerjean.me:/home/app/pages/data/projects/filestash/downloads/upload/libresize_`uname -s`-`uname -m`.a
