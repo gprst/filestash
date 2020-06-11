@@ -8,7 +8,7 @@
 # ./create_libtranscode.sh
 set -e
 arch=$(dpkg --print-architecture)
-if [ $arch != "amd64" ] && [ $arch != "armhf" ]; then
+if [ $arch != "amd64" ] && [ $arch != "armhf" ] && [ $arch != "arm64" ]; then
     echo "PLATFORM NOT SUPPORTED"
     exit 1
 fi
@@ -47,6 +47,8 @@ libpath=$(
         echo "x86_64-linux-gnu";
     elif [ $arch = "armhf" ]; then
         echo "arm-linux-gnueabihf"
+    elif [ $arch = "arm64" ]; then
+        echo "aarch64-linux-gnu"
     fi
 )
 ar x /usr/lib/$libpath/libraw.a
@@ -56,7 +58,7 @@ ar x /usr/lib/gcc/$libpath/6/libstdc++.a
 ar x /usr/lib/gcc/$libpath/6/libgomp.a
 ar x /usr/lib/$libpath/libpthread.a
 
-ar rcs libtranscode.a *.o
+ar rcs libtranscode_`uname -s`-`uname -m`.a *.o
 rm *.o
 
 #scp libtranscode.a mickael@hal.kerjean.me:/home/app/pages/data/projects/filestash/downloads/upload/libtranscode_`uname -s`-`uname -m`.a
